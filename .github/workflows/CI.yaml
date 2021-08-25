@@ -1,0 +1,117 @@
+name: CI
+
+on: push
+
+jobs:
+  test_ios:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        node-version: [14.x]
+        os: [macos-latest]
+
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+
+    - name: Install cordova
+      run: npm install -g cordova@10.0.0
+
+    - name: Install cordova paramedic
+      run: npm install -g SwitchCaseGroup/cordova-paramedic#996951d
+
+    - name: Install ios-deploy
+      run: npm install -g ios-deploy@1.11.4
+
+    - name: npm install
+      run: |
+        npm i
+
+    - name: test ios with cordova-paramedic
+      run: |
+        cordova-paramedic --platform ios@6.2.0 --plugin .
+
+  test_android:
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        node-version: [14.x]
+        os: [macos-latest]
+        avd-api-level: [30]
+
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+
+    - name: Gradle cache
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: gradle-001-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}-${{ hashFiles('**/buildSrc/**/*.kt') }}
+
+    - name: AVD cache
+      uses: actions/cache@v2
+      id: avd-cache
+      with:
+        path: |
+          ~/.android/avd/*
+          ~/.android/adb*
+        key: avd-001-${{ matrix.avd-api-level }}
+
+    - name: create AVD and generate snapshot for caching
+      if: steps.avd-cache.outputs.cache-hit != 'true'
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: ${{ matrix.avd-api-level }}
+        target: google_apis
+        profile: pixel_xl
+        avd-name: test
+        force-avd-creation: false
+        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        disable-animations: true
+        script: echo "Generated AVD snapshot for caching."
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ matrix.node-version }}
+
+    - name: set up JDK
+      uses: actions/setup-java@v2
+      with:
+        distribution: 'adopt' # See 'Supported distributions' for available options
+        java-version: '8'
+
+    - name: Install cordova
+      run: npm install -g cordova@10.0.0
+
+    - name: Install cordova paramedic
+      run: npm install -g SwitchCaseGroup/cordova-paramedic#996951d
+
+    - name: npm install
+      run: |
+        npm i
+
+    - name: test android with cordova-paramedic
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: ${{ matrix.avd-api-level }}
+        target: google_apis
+        profile: pixel_xl
+        avd-name: test
+        force-avd-creation: false
+        emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        disable-animations: true
+        script: cordova-paramedic --platform android@10.1.0 --plugin .
